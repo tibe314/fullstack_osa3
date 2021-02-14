@@ -10,6 +10,8 @@ app.use(express.json())
 var morgan = require('morgan')
 app.use(morgan('tiny'))
 
+app.use(express.static('build'))
+
 let persons = [
     {
         name: "Arto Hellas",
