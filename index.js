@@ -1,16 +1,15 @@
 const express = require('express')
 const app = express()
-
 const cors = require('cors')
+require('dotenv').config()
+const Person = require('./models/person')
 
+app.use(express.static('build'))
 app.use(cors())
-
 app.use(express.json())
 
 var morgan = require('morgan')
 app.use(morgan('tiny'))
-
-app.use(express.static('build'))
 
 let persons = [
     {
@@ -47,34 +46,67 @@ let persons = [
 //päivämäärä infosivua varten
 const date = Date().toLocaleString()
 
-//etusivu
-app.get('/', (req, res) => {
-    res.send('<h1>Hello World!</h1>')
+//kaikki henkilöt
+app.get('/api/persons', (request, response) => {
+    Person.find({}).then(persons => {
+        response.json(persons)
+    })
 })
 
-//kaikki henkilöt
-app.get('/api/persons', (req, res) => {
-    res.json(persons)
+//yksittäisen henkilön lisäys
+//ei kelpaa jos: nimi/numero puuttuu, nimi ei ole uniikki
+app.post('/api/persons', (request, response) => {
+    const body = request.body
+
+    //tsekkaus
+    if(!body.name || !body.number) {
+        return response.status(400).json({
+            error: 'content is missing'
+        })
+    }
+    var names = persons.map(function(person) {
+        return person.name
+    })
+    if (names.includes(body.name)) {
+        return response.status(400).json({
+            error: 'name must be unique'
+        })
+    }
+    //tsekkaus tehty, tässä ei pitäisi olla ongelmia
+
+    const person = new Person({
+        name: body.name,
+        number: body.number,
+        id: generateId(0, 10000)
+    })
+
+    person.save(function (error) {
+        console.log(error)
+    }).then(savedPerson => {
+        response.json(savedPerson)
+    })
 })
 
 //yksittäinen henkilö
-app.get('/api/persons/:id', (request, response) => {
-    const id = Number(request.params.id)
-    const person = persons.find(person => person.id === id)
-
-    if (person) {
-        response.json(person)
-    } else {
-        response.status(404).end()
-    }
+app.get('/api/persons/:id', (request, response, next) => {
+    Person.findById(request.params.id)
+    .then(person => {
+        if (person) {
+            response.json(note)
+        } else {
+            response.status(404).end()
+        }
+    })
+    .catch(error => next(error))
   })
 
 // yksittäisen henkilön poisto
-app.delete('/api/persons/:id', (request, response) => {
-    const id = Number(request.params.id)
-    persons = persons.filter(person => person.id !== id)
-
-    response.status(204).end()
+app.delete('/api/persons/:id', (request, response, next) => {
+    Person.findByIdAndRemove(request.params.id)
+        .then(result => {
+            response.status(204).end()
+        })
+        .catch(error => next(error))
 })
 
 
@@ -84,36 +116,21 @@ function generateId(min, max) {
     max = Math.floor(max)
     return Math.floor(Math.random() * (max-min) + min)
 }
-//yksittäisen henkilön lisäys
-//ei kelpaa jos: nimi/numero puuttuu, nimi ei ole uniikki
-app.post('/api/persons', (request, response) => {
-    const body = request.body
 
-    if(!body.name || !body.number) {
-        return response.status(400).json({
-            error: 'content is missing'
-        })
+//error handler
+const errorHandler = (error, request, response, next) => {
+    console.error(error.message)
+
+    if (error.name === 'CastError') {
+        return response.status(400).send({ error: 'malformatted id'})
     }
 
-    var names = persons.map(function(person) {
-        return person.name
-    })
-    
-    if (names.includes(body.name)) {
-        return response.status(400).json({
-            error: 'name must be unique'
-        })
-    }
-
-    const person = request.body
-    person.id = generateId(0, 10000)
-    console.log(person)
-
-    persons = persons.concat(person)
-    response.json(person)
-})
+    next(error)
+}
+app.use(errorHandler)
 
 // /info sivu
+/*
 app.get('/info', (req, res) => {
     res.send(
         `<div>
@@ -121,9 +138,9 @@ app.get('/info', (req, res) => {
         <p>${date}</p>
         </div>`
     )
-})
+})*/
 
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
 })
